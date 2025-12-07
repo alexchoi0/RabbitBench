@@ -142,15 +142,10 @@ async fn browser_login(api_url: &str) -> Result<String> {
             tokio::spawn(async move {
                 let service = service_fn(move |req: Request<hyper::body::Incoming>| {
                     let tx = tx.clone();
-                    async move {
-                        handle_callback(req, tx).await
-                    }
+                    async move { handle_callback(req, tx).await }
                 });
 
-                if let Err(e) = http1::Builder::new()
-                    .serve_connection(io, service)
-                    .await
-                {
+                if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
                     eprintln!("Server error: {}", e);
                 }
             });
@@ -180,9 +175,7 @@ async fn handle_callback(
                 let mut parts = pair.splitn(2, '=');
                 if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
                     if key == "token" {
-                        let token = urlencoding::decode(value)
-                            .unwrap_or_default()
-                            .to_string();
+                        let token = urlencoding::decode(value).unwrap_or_default().to_string();
 
                         if let Some(sender) = tx.lock().await.take() {
                             let _ = sender.send(token);
