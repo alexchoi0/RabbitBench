@@ -133,6 +133,10 @@ See [Server README](server/README.md) for setup instructions.
 | Auth | Supabase Auth (GitHub OAuth) |
 | Styling | Tailwind CSS, shadcn/ui |
 
+## Inspiration
+
+This project was inspired by [Bencher](https://bencher.dev) ([GitHub](https://github.com/bencherdev/bencher)), an excellent continuous benchmarking platform.
+
 ## License
 
 MIT
