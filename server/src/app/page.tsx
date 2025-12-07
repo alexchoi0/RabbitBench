@@ -6,6 +6,8 @@ import { GitHubStars } from "@/components/github-stars";
 import { GetStartedButton, GetStartedFreeButton } from "@/components/home-buttons";
 import { getSession } from "@/lib/auth";
 
+const BRAND_COLOR = "#ff5533";
+
 export default async function Home() {
   const session = await getSession();
   return (
@@ -40,10 +42,10 @@ export default async function Home() {
           <div className="relative mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-24 lg:py-32">
             <div className="flex flex-col items-center text-center">
               <h1 className="max-w-4xl text-2xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
-                <span className="text-[#ff7a1a]">
-                  Benchmark
-                </span>{" "}
-                Performance
+                Benchmark{" "}
+                <span style={{ color: BRAND_COLOR }}>
+                  Performance
+                </span>
               </h1>
               <p className="mt-4 max-w-2xl text-sm text-muted-foreground sm:mt-6 sm:text-base lg:text-lg">
                 Continuous benchmarking for Rust programs. Collect, visualize,
@@ -224,7 +226,7 @@ export default async function Home() {
                 </ul>
               </div>
               <div className="relative">
-                <div className="absolute -inset-4 bg-gradient-to-r from-[#ff7a1a]/20 to-[#ff7a1a]/10 blur-xl" />
+                <div className="absolute -inset-4 blur-xl" style={{ background: `linear-gradient(to right, ${BRAND_COLOR}33, ${BRAND_COLOR}1a)` }} />
                 <div className="relative rounded-xl border bg-[#0a0a0a] p-4 sm:p-6 text-[#ededed] shadow-2xl dark:shadow-2xl shadow-black/20 dark:shadow-black/50 overflow-hidden">
                   <div className="flex items-center gap-2 mb-3 sm:mb-4">
                     <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-[#ff5f56]" />
@@ -235,19 +237,19 @@ export default async function Home() {
                     <code>
                       <span className="text-[#a1a1a1]"># Install the CLI</span>
                       {"\n"}
-                      <span className="text-[#ff7a1a]">$</span> cargo install
+                      <span style={{ color: BRAND_COLOR }}>$</span> cargo install
                       rabbitbench
                       {"\n\n"}
                       <span className="text-[#a1a1a1]"># Authenticate</span>
                       {"\n"}
-                      <span className="text-[#ff7a1a]">$</span> rabbitbench auth
+                      <span style={{ color: BRAND_COLOR }}>$</span> rabbitbench auth
                       login
                       {"\n\n"}
                       <span className="text-[#a1a1a1]">
                         # Run benchmarks and submit
                       </span>
                       {"\n"}
-                      <span className="text-[#ff7a1a]">$</span> rabbitbench run \
+                      <span style={{ color: BRAND_COLOR }}>$</span> rabbitbench run \
                       {"\n"}
                       {"    "}--project my-lib \{"\n"}
                       {"    "}--branch main \{"\n"}
