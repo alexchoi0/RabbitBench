@@ -49,34 +49,39 @@ fn build_cli() {
 }
 
 /// Create a temporary script that outputs Criterion-like results
-fn create_mock_benchmark_script(output: &str) -> tempfile::NamedTempFile {
-    let mut script = tempfile::Builder::new()
-        .suffix(".sh")
-        .tempfile()
-        .expect("Failed to create temp script");
+fn create_mock_benchmark_script(output: &str) -> std::path::PathBuf {
+    use std::fs;
 
-    writeln!(script, "#!/bin/sh").unwrap();
-    writeln!(script, "cat << 'CRITERION_EOF'").unwrap();
-    write!(script, "{}", output).unwrap();
-    writeln!(script, "CRITERION_EOF").unwrap();
+    // Create a unique temp file path
+    let temp_dir = std::env::temp_dir();
+    let unique_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let script_path = temp_dir.join(format!("rabbitbench_test_{}.sh", unique_id));
 
-    // Flush to ensure all data is written before setting permissions
-    script.as_file().sync_all().unwrap();
+    // Write the script content
+    let mut content = String::new();
+    content.push_str("#!/bin/sh\n");
+    content.push_str("cat << 'CRITERION_EOF'\n");
+    content.push_str(output);
+    content.push_str("CRITERION_EOF\n");
 
-    // Make executable
+    fs::write(&script_path, &content).expect("Failed to write script");
+
+    // Make executable on Unix
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = script.as_file().metadata().unwrap().permissions();
+        let mut perms = fs::metadata(&script_path).unwrap().permissions();
         perms.set_mode(0o755);
-        script.as_file().set_permissions(perms).unwrap();
+        fs::set_permissions(&script_path, perms).unwrap();
     }
 
-    // Extra sync after permission change and small delay to avoid "Text file busy"
-    script.as_file().sync_all().unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(10));
+    // Small delay to ensure file is fully written and closed
+    std::thread::sleep(std::time::Duration::from_millis(50));
 
-    script
+    script_path
 }
 
 #[test]
@@ -93,7 +98,7 @@ fn test_run_dry_run_parses_criterion_output() {
             "-b",
             "main",
             "--dry-run",
-            script.path().to_str().unwrap(),
+            script.to_str().unwrap(),
         ])
         .env("RABBITBENCH_TOKEN", "fake-token-for-testing")
         .output()
@@ -143,7 +148,7 @@ fn test_run_dry_run_with_pr_flag() {
             "--pr",
             "42",
             "--dry-run",
-            script.path().to_str().unwrap(),
+            script.to_str().unwrap(),
         ])
         .env("RABBITBENCH_TOKEN", "fake-token-for-testing")
         .output()
@@ -176,7 +181,7 @@ fn test_run_dry_run_with_github_ref_env() {
             "-b",
             "pr-branch",
             "--dry-run",
-            script.path().to_str().unwrap(),
+            script.to_str().unwrap(),
         ])
         .env("RABBITBENCH_TOKEN", "fake-token-for-testing")
         .env("GITHUB_REF", "refs/pull/123/merge")
@@ -212,7 +217,7 @@ fn test_run_dry_run_explicit_pr_overrides_env() {
             "--pr",
             "42",
             "--dry-run",
-            script.path().to_str().unwrap(),
+            script.to_str().unwrap(),
         ])
         .env("RABBITBENCH_TOKEN", "fake-token-for-testing")
         .env("GITHUB_REF", "refs/pull/999/merge")
@@ -249,7 +254,7 @@ fn test_run_no_benchmarks_found() {
             "-b",
             "main",
             "--dry-run",
-            script.path().to_str().unwrap(),
+            script.to_str().unwrap(),
         ])
         .env("RABBITBENCH_TOKEN", "fake-token-for-testing")
         .output()
@@ -287,7 +292,7 @@ bench_s                 time:   [1.0000 s 1.1000 s 1.2000 s]
             "-b",
             "main",
             "--dry-run",
-            script.path().to_str().unwrap(),
+            script.to_str().unwrap(),
         ])
         .env("RABBITBENCH_TOKEN", "fake-token-for-testing")
         .output()
@@ -323,7 +328,7 @@ fn test_run_displays_testbed_defaulting_to_os() {
             "-b",
             "main",
             "--dry-run",
-            script.path().to_str().unwrap(),
+            script.to_str().unwrap(),
         ])
         .env("RABBITBENCH_TOKEN", "fake-token-for-testing")
         .output()
@@ -357,7 +362,7 @@ fn test_run_custom_testbed() {
             "-t",
             "ci-runner-ubuntu-22.04",
             "--dry-run",
-            script.path().to_str().unwrap(),
+            script.to_str().unwrap(),
         ])
         .env("RABBITBENCH_TOKEN", "fake-token-for-testing")
         .output()
@@ -390,7 +395,7 @@ fn test_run_with_git_hash() {
             "--hash",
             "abc123def456",
             "--dry-run",
-            script.path().to_str().unwrap(),
+            script.to_str().unwrap(),
         ])
         .env("RABBITBENCH_TOKEN", "fake-token-for-testing")
         .output()
