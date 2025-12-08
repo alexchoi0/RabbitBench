@@ -148,6 +148,7 @@ jobs:
         run: pnpm exec playwright test
         working-directory: server
         env:
+          NODE_PATH: ${{ github.workspace }}/server/node_modules
           DEV_MODE: "true"
           AUTH_SECRET: e2e-test-secret-that-is-at-least-32-characters-long
           DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
