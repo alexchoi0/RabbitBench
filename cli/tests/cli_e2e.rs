@@ -60,6 +60,9 @@ fn create_mock_benchmark_script(output: &str) -> tempfile::NamedTempFile {
     write!(script, "{}", output).unwrap();
     writeln!(script, "CRITERION_EOF").unwrap();
 
+    // Flush to ensure all data is written before setting permissions
+    script.as_file().sync_all().unwrap();
+
     // Make executable
     #[cfg(unix)]
     {
@@ -68,6 +71,10 @@ fn create_mock_benchmark_script(output: &str) -> tempfile::NamedTempFile {
         perms.set_mode(0o755);
         script.as_file().set_permissions(perms).unwrap();
     }
+
+    // Extra sync after permission change and small delay to avoid "Text file busy"
+    script.as_file().sync_all().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(10));
 
     script
 }
