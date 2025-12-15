@@ -44,142 +44,49 @@ jobs:
       - name: Test
         run: cargo test --all-targets
 
-  server:
-    name: Server
+  svelte:
+    name: SvelteKit
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: server
+        working-directory: server-svelte
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: server/pnpm-lock.yaml
+          cache: 'npm'
+          cache-dependency-path: server-svelte/package-lock.json
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Generate Prisma client
-        run: pnpm exec prisma generate
+        run: npx prisma generate
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Test
-        run: pnpm test
+      - name: Type check
+        run: npm run check
 
       - name: Build
-        run: pnpm build
+        run: npm run build
         env:
+          DATABASE_URL: "postgresql://user:pass@localhost:5432/db"
+          DIRECT_URL: "postgresql://user:pass@localhost:5432/db"
           BETTER_AUTH_SECRET: ci-test-secret-that-is-at-least-32-characters-long
-          BETTER_AUTH_URL: "http://localhost:3000"
-
-  e2e:
-    name: E2E Tests
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: driftwatch
-          POSTGRES_PASSWORD: driftwatch
-          POSTGRES_DB: driftwatch
-        ports:
-          - 5433:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-e2e-
-            ${{ runner.os }}-cargo-
-
-      - name: Build CLI
-        run: cargo build --release -p driftwatch
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: server/pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        working-directory: server
-
-      - name: Push Prisma schema to database
-        run: pnpm exec prisma db push --force-reset
-        working-directory: server
-        env:
-          DATABASE_URL: "postgresql://driftwatch:driftwatch@localhost:5433/driftwatch"
-          DIRECT_URL: "postgresql://driftwatch:driftwatch@localhost:5433/driftwatch"
-
-      - name: Install Playwright browsers
-        run: pnpm exec playwright install chromium --with-deps
-        working-directory: server
-
-      - name: Run E2E tests
-        run: pnpm exec playwright test
-        working-directory: server
-        env:
-          NODE_PATH: ${{ github.workspace }}/server/node_modules
-          DEV_MODE: "true"
-          BETTER_AUTH_SECRET: e2e-test-secret-that-is-at-least-32-characters-long
-          BETTER_AUTH_URL: "http://localhost:3000"
-          DATABASE_URL: "postgresql://driftwatch:driftwatch@localhost:5433/driftwatch"
-          DIRECT_URL: "postgresql://driftwatch:driftwatch@localhost:5433/driftwatch"
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: playwright-report
-          path: server/playwright-report/
-          retention-days: 30
+          BETTER_AUTH_URL: "http://localhost:5173"
 
   ci-success:
     name: CI Success
-    needs: [rust, server, e2e]
+    needs: [rust, svelte]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
           if [[ "${{ needs.rust.result }}" != "success" ]] || \
-             [[ "${{ needs.server.result }}" != "success" ]] || \
-             [[ "${{ needs.e2e.result }}" != "success" ]]; then
+             [[ "${{ needs.svelte.result }}" != "success" ]]; then
             echo "One or more jobs failed"
             exit 1
           fi
