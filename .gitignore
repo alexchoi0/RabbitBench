@@ -48,3 +48,7 @@ build/
 
 # TypeScript
 *.tsbuildinfo
+
+# Rust build artifacts
+api/target/
+target/
