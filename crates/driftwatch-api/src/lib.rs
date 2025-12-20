@@ -1,10 +1,10 @@
-mod auth;
-mod cache;
-mod config;
-mod entities;
-mod graphql;
-mod loaders;
-mod migrations;
+pub mod auth;
+pub mod cache;
+pub mod config;
+pub mod entities;
+pub mod graphql;
+pub mod loaders;
+pub mod migrations;
 
 use axum::{
     extract::State,
@@ -19,9 +19,10 @@ use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use sea_orm::{Database, DatabaseConnection};
 
 use cache::AppCache;
-use loaders::{BenchmarkLoader, BranchLoader, MeasureLoader, MetricLoader, TestbedLoader, ThresholdLoader};
+use loaders::{
+    BenchmarkLoader, BranchLoader, MeasureLoader, MetricLoader, TestbedLoader, ThresholdLoader,
+};
 use tower_http::cors::{Any, CorsLayer};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use auth::validate_token;
 use config::Config;
@@ -48,53 +49,60 @@ async fn graphql_handler(
     headers: axum::http::HeaderMap,
     req: GraphQLRequest,
 ) -> Result<GraphQLResponse, (StatusCode, String)> {
-    // Extract and validate JWT token
     let auth_header = headers
         .get(AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "));
 
     let user = match auth_header {
-        Some(token) => {
-            match validate_token(token, &state.config.better_auth_secret) {
-                Ok(user) => Some(user),
-                Err(e) => {
-                    tracing::warn!("Token validation failed: {}", e.0);
-                    None
-                }
+        Some(token) => match validate_token(token, &state.config.better_auth_secret) {
+            Ok(user) => Some(user),
+            Err(e) => {
+                tracing::warn!("Token validation failed: {}", e.0);
+                None
             }
-        }
+        },
         None => None,
     };
 
-    // Build request with context
     let mut request = req.into_inner();
     request = request.data(state.db.clone());
     request = request.data(state.cache.clone());
 
-    // Add DataLoaders
     request = request.data(DataLoader::new(
-        BranchLoader { db: state.db.clone() },
+        BranchLoader {
+            db: state.db.clone(),
+        },
         tokio::spawn,
     ));
     request = request.data(DataLoader::new(
-        TestbedLoader { db: state.db.clone() },
+        TestbedLoader {
+            db: state.db.clone(),
+        },
         tokio::spawn,
     ));
     request = request.data(DataLoader::new(
-        BenchmarkLoader { db: state.db.clone() },
+        BenchmarkLoader {
+            db: state.db.clone(),
+        },
         tokio::spawn,
     ));
     request = request.data(DataLoader::new(
-        MeasureLoader { db: state.db.clone() },
+        MeasureLoader {
+            db: state.db.clone(),
+        },
         tokio::spawn,
     ));
     request = request.data(DataLoader::new(
-        MetricLoader { db: state.db.clone() },
+        MetricLoader {
+            db: state.db.clone(),
+        },
         tokio::spawn,
     ));
     request = request.data(DataLoader::new(
-        ThresholdLoader { db: state.db.clone() },
+        ThresholdLoader {
+            db: state.db.clone(),
+        },
         tokio::spawn,
     ));
 
@@ -105,37 +113,24 @@ async fn graphql_handler(
     Ok(state.schema.execute(request).await.into())
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Load environment variables
+pub async fn serve(port: Option<u16>) -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 
-    // Initialize config
-    let config = Config::from_env();
-
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| config.rust_log.clone().into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    let mut config = Config::from_env();
+    if let Some(p) = port {
+        config.port = p;
+    }
 
     tracing::info!("Connecting to database...");
 
-    // Connect to database
     let db = Database::connect(&config.database_url).await?;
 
     tracing::info!("Database connected");
 
-    // Run migrations
     migrations::run_migrations(&db).await?;
 
-    // Build GraphQL schema
     let schema = build_schema();
 
-    // Create cache and app state
     let cache = AppCache::new();
     let state = AppState {
         schema,
@@ -144,13 +139,11 @@ async fn main() -> anyhow::Result<()> {
         cache,
     };
 
-    // Configure CORS
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers(Any);
 
-    // Build router
     let app = Router::new()
         .route("/health", get(health))
         .route("/graphql", post(graphql_handler))

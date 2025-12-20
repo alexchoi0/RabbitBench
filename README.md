@@ -16,8 +16,9 @@ Driftwatch provides:
 
 ```
 driftwatch/
-├── cli/        # Rust CLI for submitting benchmarks
-└── api/        # Rust HTTP API server
+└── crates/
+    ├── driftwatch-api/   # API server library
+    └── driftwatch-cli/   # CLI binary (includes serve command)
 ```
 
 ## Quick Start
@@ -26,12 +27,19 @@ driftwatch/
 
 ```bash
 # From source
-cargo install --path cli
+cargo install --path crates/driftwatch-cli
 
 # Or download from releases
 ```
 
-### 2. Authenticate
+### 2. Start the Server
+
+```bash
+# Start the API server
+driftwatch serve --port 4000
+```
+
+### 3. Authenticate
 
 ```bash
 # Browser login (recommended)
@@ -41,13 +49,13 @@ driftwatch auth login
 driftwatch auth login --token dw_your_api_token
 ```
 
-### 3. Create a Project
+### 4. Create a Project
 
 ```bash
 driftwatch project create --slug my-project --name "My Project"
 ```
 
-### 4. Submit Benchmarks
+### 5. Submit Benchmarks
 
 ```bash
 # Pipe benchmark output to the CLI
@@ -57,26 +65,18 @@ cargo bench | driftwatch run \
   --testbed ci-linux
 ```
 
-## Components
+## CLI Commands
 
-### CLI (`/cli`)
-
-Rust command-line tool for:
-- Authentication (browser OAuth or API token)
-- Project management
-- Submitting benchmark results
-- Parsing Criterion output (more adapters coming)
-
-See [CLI README](cli/README.md) for details.
-
-### API (`/api`)
-
-Rust HTTP API server providing:
-- REST API for CLI and integrations
-- User authentication
-- Project and threshold management
-
-See [API README](api/README.md) for details.
+| Command | Description |
+|---------|-------------|
+| `driftwatch serve` | Start the API server |
+| `driftwatch auth login` | Authenticate via browser or token |
+| `driftwatch auth status` | Show authentication status |
+| `driftwatch auth logout` | Remove stored credentials |
+| `driftwatch project list` | List all projects |
+| `driftwatch project create` | Create a new project |
+| `driftwatch project show` | Show project details |
+| `driftwatch run` | Run benchmarks and submit results |
 
 ## CI Integration
 
@@ -112,12 +112,28 @@ jobs:
           DRIFTWATCH_TOKEN: ${{ secrets.DRIFTWATCH_TOKEN }}
 ```
 
+## Development
+
+```bash
+# Start database
+make db-up
+
+# Run development server
+make dev
+
+# Run tests
+make test
+
+# Build release
+make build
+```
+
 ## Tech Stack
 
 | Component | Technology |
 |-----------|------------|
 | CLI | Rust, clap, reqwest |
-| API | Rust, Axum, SQLx |
+| API | Rust, Axum, async-graphql, Sea-ORM |
 | Database | PostgreSQL |
 
 ## Inspiration
