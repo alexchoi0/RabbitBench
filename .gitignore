@@ -2,13 +2,6 @@
 /target/
 Cargo.lock
 
-# Node
-node_modules/
-.next/
-out/
-.vercel
-.pnpm-debug.log*
-
 # Environment
 .env
 .env.local
@@ -32,22 +25,10 @@ Thumbs.db
 
 # Logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
 # Build
 dist/
 build/
-
-# Playwright
-/server/test-results/
-/server/playwright-report/
-/server/blob-report/
-/server/playwright/.cache/
-
-# TypeScript
-*.tsbuildinfo
 
 # Rust build artifacts
 api/target/

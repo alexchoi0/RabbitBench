@@ -17,8 +17,7 @@ Driftwatch provides:
 ```
 driftwatch/
 ├── cli/        # Rust CLI for submitting benchmarks
-├── server/     # Next.js app (dashboard + GraphQL API)
-└── web/        # Static landing page
+└── api/        # Rust HTTP API server
 ```
 
 ## Quick Start
@@ -70,15 +69,14 @@ Rust command-line tool for:
 
 See [CLI README](cli/README.md) for details.
 
-### Server (`/server`)
+### API (`/api`)
 
-Next.js application providing:
-- Web dashboard for viewing benchmarks
-- GraphQL API for CLI and integrations
-- User authentication via GitHub OAuth
+Rust HTTP API server providing:
+- REST API for CLI and integrations
+- User authentication
 - Project and threshold management
 
-See [Server README](server/README.md) for details.
+See [API README](api/README.md) for details.
 
 ## CI Integration
 
@@ -114,24 +112,13 @@ jobs:
           DRIFTWATCH_TOKEN: ${{ secrets.DRIFTWATCH_TOKEN }}
 ```
 
-## Hosting
-
-Driftwatch uses Supabase for database and authentication:
-
-- **Database**: Supabase PostgreSQL
-- **Auth**: Supabase Auth with GitHub OAuth
-
-See [Server README](server/README.md) for setup instructions.
-
 ## Tech Stack
 
 | Component | Technology |
 |-----------|------------|
 | CLI | Rust, clap, reqwest |
-| Server | Next.js 15, Prisma, GraphQL Yoga, pnpm |
-| Database | PostgreSQL (Supabase) |
-| Auth | Supabase Auth (GitHub OAuth) |
-| Styling | Tailwind CSS, shadcn/ui |
+| API | Rust, Axum, SQLx |
+| Database | PostgreSQL |
 
 ## Inspiration
 
