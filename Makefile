@@ -1,11 +1,11 @@
 .PHONY: help dev db db-up db-down db-logs db-reset build check clean
 
-# Default target
 help:
 	@echo "Driftwatch Development Commands"
 	@echo ""
 	@echo "Development:"
 	@echo "  make dev          - Start API server with database"
+	@echo "  make dev-watch    - Start API server with hot reload"
 	@echo ""
 	@echo "Database:"
 	@echo "  make db           - Start PostgreSQL (alias for db-up)"
@@ -13,11 +13,10 @@ help:
 	@echo "  make db-down      - Stop PostgreSQL container"
 	@echo "  make db-logs      - View PostgreSQL logs"
 	@echo "  make db-reset     - Reset database (destroy and recreate)"
-	@echo "  make db-init      - Initialize database tables"
 	@echo "  make db-shell     - Open psql shell"
 	@echo ""
 	@echo "Build:"
-	@echo "  make build        - Build API (release)"
+	@echo "  make build        - Build release binary"
 	@echo ""
 	@echo "Quality:"
 	@echo "  make check        - Check and lint code"
@@ -33,10 +32,10 @@ help:
 
 dev: db-up
 	@echo "Starting API server..."
-	cd api && cargo run
+	cargo run -p driftwatch -- serve
 
 dev-watch: db-up
-	cd api && cargo watch -x run
+	cargo watch -x "run -p driftwatch -- serve"
 
 # =============================================================================
 # Database
@@ -61,11 +60,6 @@ db-logs:
 db-reset:
 	docker compose down -v
 	$(MAKE) db-up
-	@sleep 2
-	$(MAKE) db-init
-
-db-init:
-	docker exec -i driftwatch-db psql -U driftwatch -d driftwatch < scripts/init-db.sql
 
 db-shell:
 	docker exec -it driftwatch-db psql -U driftwatch -d driftwatch
@@ -75,21 +69,21 @@ db-shell:
 # =============================================================================
 
 build:
-	cd api && cargo build --release
+	cargo build --release
 
 # =============================================================================
 # Quality Checks
 # =============================================================================
 
 check:
-	cd api && cargo check
-	cd api && cargo clippy -- -D warnings
+	cargo check --all-targets
+	cargo clippy --all-targets -- -D warnings
 
 fmt:
-	cd api && cargo fmt
+	cargo fmt --all
 
 test:
-	cd api && cargo test
+	cargo test --all-targets
 	@docker ps -aq --filter "label=org.testcontainers.managed-by=testcontainers" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
 
 # =============================================================================
@@ -97,4 +91,4 @@ test:
 # =============================================================================
 
 clean:
-	cd api && cargo clean
+	cargo clean
