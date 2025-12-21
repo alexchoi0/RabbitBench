@@ -4,12 +4,6 @@ members = [
     "crates/driftwatch-api",
     "crates/driftwatch-api/migration",
     "crates/driftwatch-cli",
-    "vendor/tsa/tsa",
-    "vendor/tsa/tsa-core",
-    "vendor/tsa/tsa-adapter",
-    "vendor/tsa/tsa-adapter-seaorm",
-    "vendor/tsa/tsa-token",
-    "vendor/tsa/tsa-session",
 ]
 
 [workspace.package]
@@ -82,13 +76,13 @@ http-body-util = "0.1"
 # Internal crates
 driftwatch-api = { path = "crates/driftwatch-api" }
 
-# TSA crates (vendored)
-tsa = { path = "vendor/tsa/tsa", default-features = false }
-tsa-core = { path = "vendor/tsa/tsa-core" }
-tsa-adapter = { path = "vendor/tsa/tsa-adapter" }
-tsa-adapter-seaorm = { path = "vendor/tsa/tsa-adapter-seaorm" }
-tsa-token = { path = "vendor/tsa/tsa-token" }
-tsa-session = { path = "vendor/tsa/tsa-session" }
+# TSA crates (from git)
+tsa = { git = "https://github.com/alexchoi0/tsa.git", default-features = false }
+tsa-core = { git = "https://github.com/alexchoi0/tsa.git" }
+tsa-adapter = { git = "https://github.com/alexchoi0/tsa.git" }
+tsa-adapter-seaorm = { git = "https://github.com/alexchoi0/tsa.git" }
+tsa-token = { git = "https://github.com/alexchoi0/tsa.git" }
+tsa-session = { git = "https://github.com/alexchoi0/tsa.git" }
 
 # Dev dependencies
 criterion = { version = "0.5", features = ["async_tokio"] }
