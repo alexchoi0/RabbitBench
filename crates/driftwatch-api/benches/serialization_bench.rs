@@ -1,5 +1,5 @@
 use async_graphql::ID;
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -77,11 +77,13 @@ fn bench_serialize_project_list(c: &mut Criterion) {
     let mut group = c.benchmark_group("serialize_project_list");
 
     for count in [1, 10, 50, 100].iter() {
-        let projects: Vec<Project> = (0..*count).map(|i| {
-            let mut p = create_sample_project();
-            p.slug = format!("project-{}", i);
-            p
-        }).collect();
+        let projects: Vec<Project> = (0..*count)
+            .map(|i| {
+                let mut p = create_sample_project();
+                p.slug = format!("project-{}", i);
+                p
+            })
+            .collect();
 
         group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, _| {
             b.iter(|| {
@@ -97,11 +99,13 @@ fn bench_deserialize_project_list(c: &mut Criterion) {
     let mut group = c.benchmark_group("deserialize_project_list");
 
     for count in [1, 10, 50, 100].iter() {
-        let projects: Vec<Project> = (0..*count).map(|i| {
-            let mut p = create_sample_project();
-            p.slug = format!("project-{}", i);
-            p
-        }).collect();
+        let projects: Vec<Project> = (0..*count)
+            .map(|i| {
+                let mut p = create_sample_project();
+                p.slug = format!("project-{}", i);
+                p
+            })
+            .collect();
         let json = serde_json::to_string(&projects).unwrap();
 
         group.bench_with_input(BenchmarkId::from_parameter(count), &json, |b, json| {

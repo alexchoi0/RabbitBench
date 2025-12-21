@@ -1,0 +1,21 @@
+[package]
+name = "tsa-adapter-seaorm"
+description = "SeaORM database adapter for TSA"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tsa-core.workspace = true
+async-trait.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+
+[features]
+default = ["postgres"]
+postgres = []
+sqlite = []

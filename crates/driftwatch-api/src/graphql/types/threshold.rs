@@ -1,4 +1,4 @@
-use async_graphql::{SimpleObject, InputObject, ID};
+use async_graphql::{InputObject, SimpleObject, ID};
 
 use crate::entities::threshold;
 

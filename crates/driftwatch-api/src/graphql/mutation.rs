@@ -1,30 +1,32 @@
 use async_graphql::{Context, Object, Result, ID};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set};
-use sha2::{Sha256, Digest};
-use uuid::Uuid;
 use chrono::Utc;
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use uuid::Uuid;
 
+use super::types::{
+    CreateProjectInput, CreateThresholdInput, GitHubSettingsInput, Project, Threshold,
+    UpdateProjectInput,
+};
 use crate::auth::AuthUser;
 use crate::cache::AppCache;
-use crate::entities::{self, project, api_token, threshold, measure};
-use super::types::{
-    Project, CreateProjectInput, UpdateProjectInput, GitHubSettingsInput,
-    CreateApiTokenResult,
-    Threshold, CreateThresholdInput,
-};
+use crate::entities::{self, measure, project, threshold};
 
 pub struct MutationRoot;
 
 #[Object]
 impl MutationRoot {
-    async fn create_project(&self, ctx: &Context<'_>, input: CreateProjectInput) -> Result<Project> {
+    async fn create_project(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateProjectInput,
+    ) -> Result<Project> {
         let db = ctx.data::<DatabaseConnection>()?;
         let user = ctx.data::<AuthUser>()?;
         let cache = ctx.data::<AppCache>()?;
+        let user_id = user.user_id();
 
-        // Check if slug already exists for this user
         let existing = entities::Project::find()
-            .filter(project::Column::UserId.eq(&user.user_id))
+            .filter(project::Column::UserId.eq(user_id))
             .filter(project::Column::Slug.eq(&input.slug))
             .one(db)
             .await?;
@@ -36,7 +38,7 @@ impl MutationRoot {
         let now = Utc::now().fixed_offset();
         let project = project::ActiveModel {
             id: Set(Uuid::new_v4()),
-            user_id: Set(user.user_id.clone()),
+            user_id: Set(user_id),
             slug: Set(input.slug),
             name: Set(input.name),
             description: Set(input.description),
@@ -51,7 +53,6 @@ impl MutationRoot {
 
         let project = project.insert(db).await?;
 
-        // Create default "latency" measure
         let measure = measure::ActiveModel {
             id: Set(Uuid::new_v4()),
             project_id: Set(project.id),
@@ -62,8 +63,7 @@ impl MutationRoot {
         };
         measure.insert(db).await?;
 
-        // Invalidate cache
-        cache.invalidate_user_projects(&user.user_id).await;
+        cache.invalidate_user_projects(user_id).await;
 
         Ok(project.into())
     }
@@ -77,9 +77,10 @@ impl MutationRoot {
         let db = ctx.data::<DatabaseConnection>()?;
         let user = ctx.data::<AuthUser>()?;
         let cache = ctx.data::<AppCache>()?;
+        let user_id = user.user_id();
 
         let project = entities::Project::find()
-            .filter(project::Column::UserId.eq(&user.user_id))
+            .filter(project::Column::UserId.eq(user_id))
             .filter(project::Column::Slug.eq(&slug))
             .one(db)
             .await?
@@ -100,8 +101,7 @@ impl MutationRoot {
 
         let updated = active.update(db).await?;
 
-        // Invalidate cache
-        cache.invalidate_project(&user.user_id, &slug).await;
+        cache.invalidate_project(user_id, &slug).await;
 
         Ok(updated.into())
     }
@@ -110,9 +110,10 @@ impl MutationRoot {
         let db = ctx.data::<DatabaseConnection>()?;
         let user = ctx.data::<AuthUser>()?;
         let cache = ctx.data::<AppCache>()?;
+        let user_id = user.user_id();
 
         let project = entities::Project::find()
-            .filter(project::Column::UserId.eq(&user.user_id))
+            .filter(project::Column::UserId.eq(user_id))
             .filter(project::Column::Slug.eq(&slug))
             .one(db)
             .await?
@@ -120,8 +121,7 @@ impl MutationRoot {
 
         entities::Project::delete_by_id(project.id).exec(db).await?;
 
-        // Invalidate cache
-        cache.invalidate_project(&user.user_id, &slug).await;
+        cache.invalidate_project(user_id, &slug).await;
 
         Ok(true)
     }
@@ -135,9 +135,10 @@ impl MutationRoot {
         let db = ctx.data::<DatabaseConnection>()?;
         let user = ctx.data::<AuthUser>()?;
         let cache = ctx.data::<AppCache>()?;
+        let user_id = user.user_id();
 
         let project = entities::Project::find()
-            .filter(project::Column::UserId.eq(&user.user_id))
+            .filter(project::Column::UserId.eq(user_id))
             .filter(project::Column::Slug.eq(&slug))
             .one(db)
             .await?
@@ -163,74 +164,23 @@ impl MutationRoot {
 
         let updated = active.update(db).await?;
 
-        // Invalidate cache
-        cache.invalidate_project(&user.user_id, &slug).await;
+        cache.invalidate_project(user_id, &slug).await;
 
         Ok(updated.into())
     }
 
-    async fn create_api_token(&self, ctx: &Context<'_>, name: String) -> Result<CreateApiTokenResult> {
+    async fn create_threshold(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateThresholdInput,
+    ) -> Result<Threshold> {
         let db = ctx.data::<DatabaseConnection>()?;
         let user = ctx.data::<AuthUser>()?;
         let cache = ctx.data::<AppCache>()?;
+        let user_id = user.user_id();
 
-        // Generate secret token
-        let secret = format!("dw_{}", hex::encode(Uuid::new_v4().as_bytes()));
-
-        // Hash the token for storage
-        let mut hasher = Sha256::new();
-        hasher.update(secret.as_bytes());
-        let token_hash = hex::encode(hasher.finalize());
-
-        let token = api_token::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            user_id: Set(user.user_id.clone()),
-            name: Set(name),
-            token_hash: Set(token_hash),
-            last_used_at: Set(None),
-            created_at: Set(Utc::now().fixed_offset()),
-        };
-
-        let token = token.insert(db).await?;
-
-        // Invalidate cache
-        cache.invalidate_user_tokens(&user.user_id).await;
-
-        Ok(CreateApiTokenResult {
-            token: token.into(),
-            secret,
-        })
-    }
-
-    async fn revoke_api_token(&self, ctx: &Context<'_>, id: ID) -> Result<bool> {
-        let db = ctx.data::<DatabaseConnection>()?;
-        let user = ctx.data::<AuthUser>()?;
-        let cache = ctx.data::<AppCache>()?;
-
-        let token_id = Uuid::parse_str(&id.0)?;
-
-        let token = entities::ApiToken::find_by_id(token_id)
-            .filter(api_token::Column::UserId.eq(&user.user_id))
-            .one(db)
-            .await?
-            .ok_or("Token not found")?;
-
-        entities::ApiToken::delete_by_id(token.id).exec(db).await?;
-
-        // Invalidate cache
-        cache.invalidate_user_tokens(&user.user_id).await;
-
-        Ok(true)
-    }
-
-    async fn create_threshold(&self, ctx: &Context<'_>, input: CreateThresholdInput) -> Result<Threshold> {
-        let db = ctx.data::<DatabaseConnection>()?;
-        let user = ctx.data::<AuthUser>()?;
-        let cache = ctx.data::<AppCache>()?;
-
-        // Verify project ownership
         let project = entities::Project::find()
-            .filter(project::Column::UserId.eq(&user.user_id))
+            .filter(project::Column::UserId.eq(user_id))
             .filter(project::Column::Slug.eq(&input.project_slug))
             .one(db)
             .await?
@@ -238,8 +188,14 @@ impl MutationRoot {
 
         let project_slug = project.slug.clone();
         let measure_id = Uuid::parse_str(&input.measure_id.0)?;
-        let branch_id = input.branch_id.map(|id| Uuid::parse_str(&id.0)).transpose()?;
-        let testbed_id = input.testbed_id.map(|id| Uuid::parse_str(&id.0)).transpose()?;
+        let branch_id = input
+            .branch_id
+            .map(|id| Uuid::parse_str(&id.0))
+            .transpose()?;
+        let testbed_id = input
+            .testbed_id
+            .map(|id| Uuid::parse_str(&id.0))
+            .transpose()?;
 
         let now = Utc::now().fixed_offset();
         let threshold = threshold::ActiveModel {
@@ -257,8 +213,7 @@ impl MutationRoot {
 
         let threshold = threshold.insert(db).await?;
 
-        // Invalidate cache
-        cache.invalidate_project(&user.user_id, &project_slug).await;
+        cache.invalidate_project(user_id, &project_slug).await;
 
         Ok(threshold.into())
     }
@@ -267,10 +222,10 @@ impl MutationRoot {
         let db = ctx.data::<DatabaseConnection>()?;
         let user = ctx.data::<AuthUser>()?;
         let cache = ctx.data::<AppCache>()?;
+        let user_id = user.user_id();
 
         let threshold_id = Uuid::parse_str(&id.0)?;
 
-        // Verify ownership through project
         let threshold = entities::Threshold::find_by_id(threshold_id)
             .one(db)
             .await?
@@ -281,15 +236,16 @@ impl MutationRoot {
             .await?
             .ok_or("Project not found")?;
 
-        if project.user_id != user.user_id {
+        if project.user_id != user_id {
             return Err("Unauthorized".into());
         }
 
         let project_slug = project.slug.clone();
-        entities::Threshold::delete_by_id(threshold_id).exec(db).await?;
+        entities::Threshold::delete_by_id(threshold_id)
+            .exec(db)
+            .await?;
 
-        // Invalidate cache
-        cache.invalidate_project(&user.user_id, &project_slug).await;
+        cache.invalidate_project(user_id, &project_slug).await;
 
         Ok(true)
     }

@@ -1,5 +1,6 @@
 use moka::future::Cache;
 use std::time::Duration;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppCache {
@@ -26,20 +27,20 @@ impl AppCache {
         }
     }
 
-    pub async fn invalidate_user_projects(&self, user_id: &str) {
+    pub async fn invalidate_user_projects(&self, user_id: Uuid) {
         self.projects
             .invalidate(&format!("user:{}:projects", user_id))
             .await;
     }
 
-    pub async fn invalidate_project(&self, user_id: &str, slug: &str) {
+    pub async fn invalidate_project(&self, user_id: Uuid, slug: &str) {
         self.project
             .invalidate(&format!("user:{}:project:{}", user_id, slug))
             .await;
         self.invalidate_user_projects(user_id).await;
     }
 
-    pub async fn invalidate_user_tokens(&self, user_id: &str) {
+    pub async fn invalidate_user_tokens(&self, user_id: Uuid) {
         self.tokens
             .invalidate(&format!("user:{}:tokens", user_id))
             .await;

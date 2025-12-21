@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package driftwatch.auth;
+
+service AuthService {
+  rpc Signup(SignupRequest) returns (AuthResponse);
+  rpc Signin(SigninRequest) returns (AuthResponse);
+  rpc Signout(SignoutRequest) returns (SignoutResponse);
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
+  rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
+  rpc GetMe(GetMeRequest) returns (GetMeResponse);
+}
+
+message SignupRequest {
+  string email = 1;
+  string password = 2;
+  optional string name = 3;
+}
+
+message SigninRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message AuthResponse {
+  User user = 1;
+  string session_token = 2;
+}
+
+message SignoutRequest {
+  string session_token = 1;
+}
+
+message SignoutResponse {
+  bool success = 1;
+}
+
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;
+  optional User user = 2;
+}
+
+message CreateApiKeyRequest {
+  string session_token = 1;
+  string name = 2;
+  repeated string scopes = 3;
+}
+
+message CreateApiKeyResponse {
+  ApiKey api_key = 1;
+  string secret = 2;
+}
+
+message RevokeApiKeyRequest {
+  string session_token = 1;
+  string api_key_id = 2;
+}
+
+message RevokeApiKeyResponse {
+  bool success = 1;
+}
+
+message GetMeRequest {
+  string token = 1;
+}
+
+message GetMeResponse {
+  User user = 1;
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+  optional string name = 3;
+  bool email_verified = 4;
+}
+
+message ApiKey {
+  string id = 1;
+  string name = 2;
+  string prefix = 3;
+  repeated string scopes = 4;
+  optional string expires_at = 5;
+  string created_at = 6;
+}

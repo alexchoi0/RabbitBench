@@ -1,0 +1,11 @@
+#!/bin/sh
+
+set -e
+
+echo "Running cargo fmt..."
+cargo fmt --all -- --check
+
+echo "Running clippy on driftwatch packages..."
+cargo clippy --package driftwatch-api --package driftwatch --package migration -- -D warnings
+
+echo "Pre-commit checks passed!"
