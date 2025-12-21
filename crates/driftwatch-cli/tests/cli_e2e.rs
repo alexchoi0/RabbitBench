@@ -28,9 +28,10 @@ hash_function           time:   [45.678 ms 46.789 ms 47.890 ms]
 
 /// Get the path to the CLI binary
 fn cli_binary() -> std::path::PathBuf {
-    // cli is in workspace, so target is at parent level
+    // CARGO_MANIFEST_DIR is crates/driftwatch-cli, go up twice to workspace root
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.pop(); // Go up from cli/ to workspace root
+    path.pop(); // Go up from driftwatch-cli to crates/
+    path.pop(); // Go up from crates/ to workspace root
     path.push("target");
     path.push("release");
     path.push("driftwatch");
