@@ -1,15 +1,18 @@
+use std::sync::Arc;
+
 use async_graphql::{Context, Object, Result, ID};
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 
 use super::types::{
-    CreateProjectInput, CreateThresholdInput, GitHubSettingsInput, Project, Threshold,
-    UpdateProjectInput,
+    AuthPayload, CreateApiKeyInput, CreateApiKeyPayload, CreateProjectInput, CreateThresholdInput,
+    GitHubSettingsInput, Project, SigninInput, SignupInput, Threshold, UpdateProjectInput,
 };
 use crate::auth::AuthUser;
 use crate::cache::AppCache;
 use crate::entities::{self, measure, project, threshold};
+use crate::grpc::AuthServiceImpl;
 
 pub struct MutationRoot;
 
@@ -248,5 +251,84 @@ impl MutationRoot {
         cache.invalidate_project(user_id, &project_slug).await;
 
         Ok(true)
+    }
+
+    async fn signup(&self, ctx: &Context<'_>, input: SignupInput) -> Result<AuthPayload> {
+        let auth_service = ctx.data::<Arc<AuthServiceImpl>>()?;
+
+        let (user, session_token) = auth_service
+            .signup_direct(&input.email, &input.password, input.name)
+            .await
+            .map_err(async_graphql::Error::new)?;
+
+        Ok(AuthPayload {
+            user: user.into(),
+            session_token,
+        })
+    }
+
+    async fn signin(&self, ctx: &Context<'_>, input: SigninInput) -> Result<AuthPayload> {
+        let auth_service = ctx.data::<Arc<AuthServiceImpl>>()?;
+
+        let (user, session_token) = auth_service
+            .signin_direct(&input.email, &input.password)
+            .await
+            .map_err(async_graphql::Error::new)?;
+
+        Ok(AuthPayload {
+            user: user.into(),
+            session_token,
+        })
+    }
+
+    async fn signout(&self, ctx: &Context<'_>) -> Result<bool> {
+        let auth_service = ctx.data::<Arc<AuthServiceImpl>>()?;
+        let user = ctx.data::<AuthUser>()?;
+
+        if !user.is_session_auth() {
+            return Err("Signout requires session authentication, not API key".into());
+        }
+
+        auth_service
+            .signout_direct(&user.token)
+            .await
+            .map_err(async_graphql::Error::new)
+    }
+
+    async fn create_api_key(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateApiKeyInput,
+    ) -> Result<CreateApiKeyPayload> {
+        let auth_service = ctx.data::<Arc<AuthServiceImpl>>()?;
+        let user = ctx.data::<AuthUser>()?;
+
+        if !user.is_session_auth() {
+            return Err("Creating API keys requires session authentication, not API key".into());
+        }
+
+        let (api_key, secret) = auth_service
+            .create_api_key_direct(&user.token, &input.name, input.scopes)
+            .await
+            .map_err(async_graphql::Error::new)?;
+
+        Ok(CreateApiKeyPayload {
+            api_key: api_key.into(),
+            secret,
+        })
+    }
+
+    async fn revoke_api_key(&self, ctx: &Context<'_>, id: ID) -> Result<bool> {
+        let auth_service = ctx.data::<Arc<AuthServiceImpl>>()?;
+        let user = ctx.data::<AuthUser>()?;
+
+        if !user.is_session_auth() {
+            return Err("Revoking API keys requires session authentication, not API key".into());
+        }
+
+        auth_service
+            .revoke_api_key_direct(&user.token, &id.0)
+            .await
+            .map_err(async_graphql::Error::new)
     }
 }

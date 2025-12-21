@@ -1,11 +1,14 @@
+use std::sync::Arc;
+
 use async_graphql::{Context, Object, Result};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use tracing::{info_span, instrument, Instrument};
 
-use super::types::Project;
+use super::types::{ApiKey, Project, User};
 use crate::auth::AuthUser;
 use crate::cache::AppCache;
 use crate::entities::{self, project};
+use crate::grpc::AuthServiceImpl;
 
 pub struct QueryRoot;
 
@@ -126,17 +129,22 @@ impl QueryRoot {
 
     async fn me(&self, ctx: &Context<'_>) -> Result<User> {
         let user = ctx.data::<AuthUser>()?;
-        Ok(User {
-            id: async_graphql::ID(user.user.id.to_string()),
-            email: user.user.email.clone(),
-            name: user.user.name.clone(),
-        })
+        Ok(user.user.clone().into())
     }
-}
 
-#[derive(async_graphql::SimpleObject)]
-pub struct User {
-    pub id: async_graphql::ID,
-    pub email: String,
-    pub name: Option<String>,
+    async fn api_keys(&self, ctx: &Context<'_>) -> Result<Vec<ApiKey>> {
+        let auth_service = ctx.data::<Arc<AuthServiceImpl>>()?;
+        let user = ctx.data::<AuthUser>()?;
+
+        if !user.is_session_auth() {
+            return Err("Listing API keys requires session authentication, not API key".into());
+        }
+
+        let api_keys = auth_service
+            .list_api_keys_direct(&user.token)
+            .await
+            .map_err(async_graphql::Error::new)?;
+
+        Ok(api_keys.into_iter().map(Into::into).collect())
+    }
 }

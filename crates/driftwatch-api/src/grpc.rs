@@ -8,7 +8,8 @@ pub mod auth {
 }
 
 use auth::auth_service_server::AuthService;
-use auth::{
+pub use auth::auth_service_server::AuthServiceServer;
+pub use auth::{
     ApiKey as ProtoApiKey, AuthResponse, CreateApiKeyRequest, CreateApiKeyResponse, GetMeRequest,
     GetMeResponse, RevokeApiKeyRequest, RevokeApiKeyResponse, SigninRequest, SignoutRequest,
     SignoutResponse, SignupRequest, User as ProtoUser, ValidateTokenRequest, ValidateTokenResponse,
@@ -162,6 +163,116 @@ impl AuthService for AuthServiceImpl {
         }
 
         Err(Status::unauthenticated("Invalid token"))
+    }
+}
+
+impl AuthServiceImpl {
+    pub async fn signup_direct(
+        &self,
+        email: &str,
+        password: &str,
+        name: Option<String>,
+    ) -> Result<(tsa_core::User, String), String> {
+        let (user, _session, token) = self
+            .auth
+            .signup(email, password, name)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok((user, token))
+    }
+
+    pub async fn signin_direct(
+        &self,
+        email: &str,
+        password: &str,
+    ) -> Result<(tsa_core::User, String), String> {
+        let (user, _session, token) = self
+            .auth
+            .signin(email, password, None, None)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok((user, token))
+    }
+
+    pub async fn signout_direct(&self, session_token: &str) -> Result<bool, String> {
+        self.auth
+            .signout(session_token)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
+    pub async fn create_api_key_direct(
+        &self,
+        session_token: &str,
+        name: &str,
+        scopes: Vec<String>,
+    ) -> Result<(tsa_core::ApiKey, String), String> {
+        let (user, _session) = self
+            .auth
+            .validate_session(session_token)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let (api_key, secret) = self
+            .auth
+            .create_api_key(user.id, name, scopes, None, None)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok((api_key, secret))
+    }
+
+    pub async fn revoke_api_key_direct(
+        &self,
+        session_token: &str,
+        api_key_id: &str,
+    ) -> Result<bool, String> {
+        let (user, _session) = self
+            .auth
+            .validate_session(session_token)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let api_key_id = uuid::Uuid::parse_str(api_key_id).map_err(|e| e.to_string())?;
+
+        self.auth
+            .delete_api_key(user.id, api_key_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(true)
+    }
+
+    pub async fn list_api_keys_direct(
+        &self,
+        session_token: &str,
+    ) -> Result<Vec<tsa_core::ApiKey>, String> {
+        let (user, _session) = self
+            .auth
+            .validate_session(session_token)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let api_keys = self
+            .auth
+            .list_api_keys(user.id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(api_keys)
+    }
+
+    pub async fn get_me_direct(&self, token: &str) -> Result<tsa_core::User, String> {
+        if let Ok((user, _session)) = self.auth.validate_session(token).await {
+            return Ok(user);
+        }
+
+        if let Ok((_api_key, user)) = self.auth.validate_api_key(token).await {
+            return Ok(user);
+        }
+
+        Err("Invalid token".to_string())
     }
 }
 

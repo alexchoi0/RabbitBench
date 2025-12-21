@@ -1,4 +1,5 @@
 mod alert;
+mod auth;
 mod benchmark;
 mod branch;
 mod measure;
@@ -9,6 +10,7 @@ mod testbed;
 mod threshold;
 
 pub use alert::*;
+pub use auth::*;
 pub use benchmark::*;
 pub use branch::*;
 pub use measure::*;

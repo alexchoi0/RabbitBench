@@ -41,6 +41,7 @@ struct AppState {
     schema: AppSchema,
     db: DatabaseConnection,
     auth: Arc<TsaAuth>,
+    auth_service: Arc<AuthServiceImpl>,
     cache: AppCache,
 }
 
@@ -77,6 +78,7 @@ async fn graphql_handler(
     request = request.data(state.db.clone());
     request = request.data(state.cache.clone());
     request = request.data(state.auth.clone());
+    request = request.data(state.auth_service.clone());
 
     request = request.data(DataLoader::new(
         BranchLoader {
@@ -141,6 +143,7 @@ pub async fn serve(port: Option<u16>, grpc_port: Option<u16>) -> anyhow::Result<
     let adapter = SeaOrmAdapter::new(db.clone());
     let auth_config = AuthConfig::new().app_name("Driftwatch");
     let auth = Arc::new(Auth::new(adapter, auth_config, NoopCallbacks));
+    let auth_service = Arc::new(AuthServiceImpl { auth: auth.clone() });
 
     let schema = build_schema();
 
@@ -149,6 +152,7 @@ pub async fn serve(port: Option<u16>, grpc_port: Option<u16>) -> anyhow::Result<
         schema,
         db,
         auth: auth.clone(),
+        auth_service: auth_service.clone(),
         cache,
     };
 
@@ -166,12 +170,12 @@ pub async fn serve(port: Option<u16>, grpc_port: Option<u16>) -> anyhow::Result<
 
     let grpc_port = grpc_port.unwrap_or(config.grpc_port);
     let grpc_addr = format!("0.0.0.0:{}", grpc_port).parse()?;
-    let auth_service = AuthServiceImpl { auth };
+    let grpc_auth_service = AuthServiceImpl { auth };
 
     let grpc_handle = tokio::spawn(async move {
         tracing::info!("Starting gRPC server on {}", grpc_addr);
         TonicServer::builder()
-            .add_service(AuthServiceServer::new(auth_service))
+            .add_service(AuthServiceServer::new(grpc_auth_service))
             .serve(grpc_addr)
             .await
     });

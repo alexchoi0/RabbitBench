@@ -10,11 +10,16 @@ pub struct AuthUser {
     pub user: User,
     pub session: Option<Session>,
     pub api_key: Option<ApiKey>,
+    pub token: String,
 }
 
 impl AuthUser {
     pub fn user_id(&self) -> uuid::Uuid {
         self.user.id
+    }
+
+    pub fn is_session_auth(&self) -> bool {
+        self.session.is_some()
     }
 }
 
@@ -27,6 +32,7 @@ pub async fn validate_token(token: &str, auth: &Arc<TsaAuth>) -> Result<AuthUser
             user,
             session: Some(session),
             api_key: None,
+            token: token.to_string(),
         });
     }
 
@@ -35,6 +41,7 @@ pub async fn validate_token(token: &str, auth: &Arc<TsaAuth>) -> Result<AuthUser
             user,
             session: None,
             api_key: Some(api_key),
+            token: token.to_string(),
         });
     }
 
