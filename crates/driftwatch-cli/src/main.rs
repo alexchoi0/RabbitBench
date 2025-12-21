@@ -6,7 +6,7 @@ mod adapters;
 mod api;
 mod commands;
 
-use commands::{auth, project, run};
+use commands::{auth, config, project, run};
 
 #[derive(Parser)]
 #[command(name = "driftwatch")]
@@ -32,6 +32,10 @@ enum Commands {
         #[command(subcommand)]
         command: auth::AuthCommands,
     },
+    Config {
+        #[command(subcommand)]
+        command: config::ConfigCommands,
+    },
     Project {
         #[command(subcommand)]
         command: project::ProjectCommands,
@@ -43,6 +47,9 @@ enum Commands {
 struct ServeArgs {
     #[arg(short, long, env = "PORT", default_value = "4000")]
     port: u16,
+
+    #[arg(long, env = "GRPC_PORT", default_value = "50051")]
+    grpc_port: u16,
 }
 
 #[tokio::main]
@@ -59,11 +66,15 @@ async fn main() -> Result<()> {
                 .with(tracing_subscriber::fmt::layer())
                 .init();
 
-            driftwatch_api::serve(Some(args.port)).await
+            driftwatch_api::serve(Some(args.port), Some(args.grpc_port)).await
         }
         Commands::Auth { command } => {
             init_cli_tracing();
             auth::handle(command).await
+        }
+        Commands::Config { command } => {
+            init_cli_tracing();
+            config::handle(command).await
         }
         Commands::Project { command } => {
             init_cli_tracing();

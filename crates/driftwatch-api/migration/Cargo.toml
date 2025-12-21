@@ -6,4 +6,6 @@ edition.workspace = true
 [dependencies]
 sea-orm-migration.workspace = true
 tokio.workspace = true
-async-trait = "0.1"
+async-trait.workspace = true
+uuid.workspace = true
+tsa-adapter-seaorm.workspace = true

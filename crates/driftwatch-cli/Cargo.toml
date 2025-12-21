@@ -30,6 +30,10 @@ hyper.workspace = true
 hyper-util.workspace = true
 http-body-util.workspace = true
 
+tonic.workspace = true
+prost.workspace = true
+urlencoding.workspace = true
+
 driftwatch-api.workspace = true
 
 [dev-dependencies]

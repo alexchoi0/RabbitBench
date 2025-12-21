@@ -1,9 +1,11 @@
-use async_graphql::{ComplexObject, Context, Result, SimpleObject, InputObject, ID};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QueryOrder, QuerySelect};
+use async_graphql::{ComplexObject, Context, InputObject, Result, SimpleObject, ID};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::{self, project, branch, testbed, measure, benchmark, report, threshold, alert};
+use crate::entities::{
+    self, alert, benchmark, branch, measure, project, report, testbed, threshold,
+};
 
 #[derive(SimpleObject, Serialize, Deserialize)]
 #[graphql(complex, cache_control(max_age = 300))]
@@ -121,7 +123,11 @@ impl Project {
         Ok(thresholds.into_iter().map(Into::into).collect())
     }
 
-    async fn alerts(&self, ctx: &Context<'_>, status: Option<super::AlertStatusInput>) -> Result<Vec<super::Alert>> {
+    async fn alerts(
+        &self,
+        ctx: &Context<'_>,
+        status: Option<super::AlertStatusInput>,
+    ) -> Result<Vec<super::Alert>> {
         let db = ctx.data::<DatabaseConnection>()?;
         let project_id = Uuid::parse_str(&self.id.0)?;
 
@@ -134,14 +140,17 @@ impl Project {
             .map(|t| t.id)
             .collect();
 
-        let mut query = entities::Alert::find()
-            .filter(alert::Column::ThresholdId.is_in(threshold_ids));
+        let mut query =
+            entities::Alert::find().filter(alert::Column::ThresholdId.is_in(threshold_ids));
 
         if let Some(status) = status {
             query = query.filter(alert::Column::Status.eq(status.to_db_value()));
         }
 
-        let alerts = query.order_by_desc(alert::Column::CreatedAt).all(db).await?;
+        let alerts = query
+            .order_by_desc(alert::Column::CreatedAt)
+            .all(db)
+            .await?;
         Ok(alerts.into_iter().map(Into::into).collect())
     }
 }

@@ -291,7 +291,10 @@ async fn test_create_and_get_project() {
 
     assert_eq!(result.create_project.slug, "my-project");
     assert_eq!(result.create_project.name, "My Project");
-    assert_eq!(result.create_project.description, Some("A test project".to_string()));
+    assert_eq!(
+        result.create_project.description,
+        Some("A test project".to_string())
+    );
     assert!(!result.create_project.public);
 
     let result: SingleProjectData = server
@@ -373,7 +376,10 @@ async fn test_update_project() {
         .unwrap();
 
     assert_eq!(result.update_project.name, "Updated Name");
-    assert_eq!(result.update_project.description, Some("New description".to_string()));
+    assert_eq!(
+        result.update_project.description,
+        Some("New description".to_string())
+    );
     assert!(result.update_project.public);
 }
 
@@ -549,7 +555,10 @@ async fn test_github_settings() {
         .await
         .unwrap();
 
-    assert_eq!(result.update_github_settings.github_repo, Some("owner/repo".to_string()));
+    assert_eq!(
+        result.update_github_settings.github_repo,
+        Some("owner/repo".to_string())
+    );
     assert!(result.update_github_settings.github_pr_comments);
     assert!(result.update_github_settings.github_status_checks);
     assert!(result.update_github_settings.has_github_token);

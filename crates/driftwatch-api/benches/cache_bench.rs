@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use moka::future::Cache;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -28,12 +28,16 @@ fn bench_cache_get_hit(c: &mut Criterion) {
     let cache = create_cache();
 
     rt.block_on(async {
-        cache.insert("user:test:projects".to_string(), "cached_value".to_string()).await;
+        cache
+            .insert("user:test:projects".to_string(), "cached_value".to_string())
+            .await;
     });
 
     c.bench_function("cache_get_hit", |b| {
         b.to_async(&rt).iter(|| async {
-            let result = cache.get(&black_box("user:test:projects".to_string())).await;
+            let result = cache
+                .get(&black_box("user:test:projects".to_string()))
+                .await;
             black_box(result)
         });
     });
@@ -60,7 +64,9 @@ fn bench_cache_invalidate(c: &mut Criterion) {
         b.to_async(&rt).iter(|| {
             let cache = cache.clone();
             async move {
-                cache.invalidate(&black_box("user:test:projects".to_string())).await;
+                cache
+                    .invalidate(&black_box("user:test:projects".to_string()))
+                    .await;
             }
         });
     });
@@ -80,7 +86,9 @@ fn bench_cache_insert_varying_sizes(c: &mut Criterion) {
                 let cache = cache.clone();
                 let v = value.clone();
                 async move {
-                    cache.insert(black_box("key".to_string()), black_box(v)).await;
+                    cache
+                        .insert(black_box("key".to_string()), black_box(v))
+                        .await;
                 }
             });
         });

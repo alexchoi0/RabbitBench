@@ -3,26 +3,39 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const DEFAULT_API_URL: &str = "https://driftwatch.dev";
+pub const DEFAULT_API_URL: &str = "https://driftwatch.dev";
+pub const DEFAULT_GRPC_URL: &str = "http://localhost:50051";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub token: String,
     #[serde(default = "default_api_url")]
     pub api_url: String,
+    #[serde(default = "default_grpc_url")]
+    pub grpc_url: String,
 }
 
 fn default_api_url() -> String {
     DEFAULT_API_URL.to_string()
 }
 
+fn default_grpc_url() -> String {
+    DEFAULT_GRPC_URL.to_string()
+}
+
 impl Config {
     pub fn load() -> Result<Self> {
         let api_url =
             std::env::var("DRIFTWATCH_API_URL").unwrap_or_else(|_| DEFAULT_API_URL.to_string());
+        let grpc_url =
+            std::env::var("DRIFTWATCH_GRPC_URL").unwrap_or_else(|_| DEFAULT_GRPC_URL.to_string());
 
         if let Ok(token) = std::env::var("DRIFTWATCH_TOKEN") {
-            return Ok(Config { token, api_url });
+            return Ok(Config {
+                token,
+                api_url,
+                grpc_url,
+            });
         }
 
         let config_path = get_config_path()?;
@@ -30,9 +43,11 @@ impl Config {
             .context("Not authenticated. Run 'driftwatch auth login' first.")?;
         let mut config: Config = toml::from_str(&config_str).context("Invalid config file")?;
 
-        // Environment variable overrides config file
         if std::env::var("DRIFTWATCH_API_URL").is_ok() {
             config.api_url = api_url;
+        }
+        if std::env::var("DRIFTWATCH_GRPC_URL").is_ok() {
+            config.grpc_url = grpc_url;
         }
 
         Ok(config)

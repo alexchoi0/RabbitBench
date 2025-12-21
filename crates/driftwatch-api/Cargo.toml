@@ -27,14 +27,25 @@ async-graphql.workspace = true
 async-graphql-axum.workspace = true
 
 sea-orm.workspace = true
+sea-orm-migration.workspace = true
 
 jsonwebtoken.workspace = true
+
+tsa = { workspace = true, features = ["adapter-seaorm"] }
+tsa-core.workspace = true
+tsa-adapter-seaorm.workspace = true
+
+tonic.workspace = true
+prost.workspace = true
 
 sha2.workspace = true
 hex.workspace = true
 moka.workspace = true
 
 migration = { path = "migration" }
+
+[build-dependencies]
+tonic-build.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

@@ -1,5 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use clap::Subcommand;
+use driftwatch_api::grpc::auth::auth_service_client::AuthServiceClient;
+use driftwatch_api::grpc::auth::GetMeRequest;
 use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::server::conn::http1;
@@ -9,12 +11,11 @@ use hyper_util::rt::TokioIo;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::net::TcpListener;
+use tokio::net::TcpListener as TokioTcpListener;
 use tokio::sync::oneshot;
+use tonic::transport::Channel;
 
-use crate::api::Config;
-
-const DEFAULT_API_URL: &str = "https://driftwatch.dev";
+use crate::api::{Config, DEFAULT_API_URL, DEFAULT_GRPC_URL};
 
 #[derive(Subcommand)]
 pub enum AuthCommands {
@@ -27,6 +28,10 @@ pub enum AuthCommands {
         /// API URL (for self-hosted instances)
         #[arg(long, default_value = DEFAULT_API_URL)]
         api_url: String,
+
+        /// gRPC URL (for self-hosted instances)
+        #[arg(long, env = "DRIFTWATCH_GRPC_URL", default_value = DEFAULT_GRPC_URL)]
+        grpc_url: String,
     },
     /// Show authentication status
     Status,
@@ -36,13 +41,17 @@ pub enum AuthCommands {
 
 pub async fn handle(command: AuthCommands) -> Result<()> {
     match command {
-        AuthCommands::Login { token, api_url } => login(token, &api_url).await,
+        AuthCommands::Login {
+            token,
+            api_url,
+            grpc_url,
+        } => login(token, &api_url, &grpc_url).await,
         AuthCommands::Status => status().await,
         AuthCommands::Logout => logout().await,
     }
 }
 
-async fn login(token: Option<String>, api_url: &str) -> Result<()> {
+async fn login(token: Option<String>, api_url: &str, grpc_url: &str) -> Result<()> {
     let token = match token {
         Some(t) => {
             println!("Using provided API token...");
@@ -54,38 +63,31 @@ async fn login(token: Option<String>, api_url: &str) -> Result<()> {
         }
     };
 
-    // Validate token by making a test request
-    println!("Validating token...");
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(format!("{}/api/graphql", api_url))
-        .header("Authorization", format!("Bearer {}", token))
-        .header("Content-Type", "application/json")
-        .body(r#"{"query":"{ me { email } }"}"#)
-        .send()
+    println!("Validating token via gRPC...");
+    let channel = Channel::from_shared(grpc_url.to_string())
+        .context("Invalid gRPC URL")?
+        .connect()
         .await
-        .context("Failed to validate token")?;
+        .context("Failed to connect to gRPC server")?;
 
-    if !resp.status().is_success() {
-        return Err(anyhow!("Invalid token or server error: {}", resp.status()));
-    }
+    let mut client = AuthServiceClient::new(channel);
 
-    let body: serde_json::Value = resp.json().await?;
-    if let Some(errors) = body.get("errors") {
-        return Err(anyhow!("Token validation failed: {:?}", errors));
-    }
+    let response = client
+        .get_me(GetMeRequest {
+            token: token.clone(),
+        })
+        .await
+        .context("Token validation failed")?;
 
-    let email = body
-        .get("data")
-        .and_then(|d| d.get("me"))
-        .and_then(|m| m.get("email"))
-        .and_then(|e| e.as_str())
-        .unwrap_or("unknown");
+    let user = response
+        .into_inner()
+        .user
+        .ok_or_else(|| anyhow!("No user returned"))?;
 
-    // Save config
     let config = Config {
         token,
         api_url: api_url.to_string(),
+        grpc_url: grpc_url.to_string(),
     };
     let config_path = get_config_path()?;
 
@@ -97,15 +99,14 @@ async fn login(token: Option<String>, api_url: &str) -> Result<()> {
     fs::write(&config_path, config_str)?;
 
     println!();
-    println!("Authenticated as: {}", email);
+    println!("Authenticated as: {}", user.email);
     println!("Config saved to: {:?}", config_path);
 
     Ok(())
 }
 
 async fn browser_login(api_url: &str) -> Result<String> {
-    // Find an available port
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let listener = TokioTcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();
     let callback_url = format!("http://127.0.0.1:{}/callback", port);
 
@@ -238,6 +239,7 @@ async fn status() -> Result<()> {
         Ok(config) => {
             println!("Authenticated");
             println!("API URL: {}", config.api_url);
+            println!("gRPC URL: {}", config.grpc_url);
             println!("Token: {}...", &config.token[..8.min(config.token.len())]);
         }
         Err(_) => {
@@ -268,39 +270,4 @@ fn get_config_path() -> Result<PathBuf> {
         .context("Could not determine config directory")?
         .join("driftwatch");
     Ok(config_dir.join("config.toml"))
-}
-
-mod urlencoding {
-    pub fn encode(s: &str) -> String {
-        let mut result = String::new();
-        for c in s.chars() {
-            match c {
-                'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => result.push(c),
-                _ => {
-                    for b in c.to_string().as_bytes() {
-                        result.push_str(&format!("%{:02X}", b));
-                    }
-                }
-            }
-        }
-        result
-    }
-
-    pub fn decode(s: &str) -> Result<String, std::string::FromUtf8Error> {
-        let mut result = Vec::new();
-        let mut chars = s.chars().peekable();
-        while let Some(c) = chars.next() {
-            if c == '%' {
-                let hex: String = chars.by_ref().take(2).collect();
-                if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                    result.push(byte);
-                }
-            } else if c == '+' {
-                result.push(b' ');
-            } else {
-                result.push(c as u8);
-            }
-        }
-        String::from_utf8(result)
-    }
 }

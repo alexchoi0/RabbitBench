@@ -4,6 +4,12 @@ members = [
     "crates/driftwatch-api",
     "crates/driftwatch-api/migration",
     "crates/driftwatch-cli",
+    "vendor/tsa/tsa",
+    "vendor/tsa/tsa-core",
+    "vendor/tsa/tsa-adapter",
+    "vendor/tsa/tsa-adapter-seaorm",
+    "vendor/tsa/tsa-token",
+    "vendor/tsa/tsa-session",
 ]
 
 [workspace.package]
@@ -23,11 +29,17 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15"
+async-trait = "0.1"
 
 # Web framework
 axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# gRPC
+tonic = "0.12"
+prost = "0.13"
+tonic-build = "0.12"
 
 # GraphQL
 async-graphql = { version = "7", features = ["chrono", "dataloader"] }
@@ -45,15 +57,19 @@ sea-orm-migration = { version = "1", features = ["sqlx-postgres", "runtime-tokio
 
 # Auth
 jsonwebtoken = "9"
+argon2 = "0.5"
+rand = "0.8"
+base64 = "0.22"
 
 # Utils
 sha2 = "0.10"
 hex = "0.4"
 moka = { version = "0.12", features = ["future"] }
+urlencoding = "2"
 
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 toml = "0.8"
 dirs = "5"
 regex = "1"
@@ -65,6 +81,14 @@ http-body-util = "0.1"
 
 # Internal crates
 driftwatch-api = { path = "crates/driftwatch-api" }
+
+# TSA crates (vendored)
+tsa = { path = "vendor/tsa/tsa", default-features = false }
+tsa-core = { path = "vendor/tsa/tsa-core" }
+tsa-adapter = { path = "vendor/tsa/tsa-adapter" }
+tsa-adapter-seaorm = { path = "vendor/tsa/tsa-adapter-seaorm" }
+tsa-token = { path = "vendor/tsa/tsa-token" }
+tsa-session = { path = "vendor/tsa/tsa-session" }
 
 # Dev dependencies
 criterion = { version = "0.5", features = ["async_tokio"] }

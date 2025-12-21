@@ -1,24 +1,30 @@
 use async_graphql::dataloader::DataLoader;
+use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
     extract::State,
     http::{header::AUTHORIZATION, Method, StatusCode},
     routing::{get, post},
     Router,
 };
-use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use driftwatch_api::{
-    auth::validate_token,
+    auth::{validate_token, TsaAuth},
     cache::AppCache,
     graphql::build_schema,
-    loaders::{BenchmarkLoader, BranchLoader, MeasureLoader, MetricLoader, TestbedLoader, ThresholdLoader},
+    loaders::{
+        BenchmarkLoader, BranchLoader, MeasureLoader, MetricLoader, TestbedLoader, ThresholdLoader,
+    },
+    migrations,
 };
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
 use serde::Deserialize;
 use std::fs::{self, OpenOptions};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::sync::oneshot;
 use tower_http::cors::{Any, CorsLayer};
+use tsa::{Auth, AuthConfig, NoopCallbacks};
+use tsa_adapter_seaorm::SeaOrmAdapter;
 use uuid::Uuid;
 
 const CONTAINER_NAME: &str = "driftwatch-shared-test-postgres";
@@ -49,7 +55,6 @@ fn with_lock<T, F: FnOnce() -> T>(f: F) -> T {
 
 fn get_or_start_container() -> String {
     with_lock(|| {
-        // Check if container already running
         let running = std::process::Command::new("docker")
             .args(["inspect", "-f", "{{.State.Running}}", CONTAINER_NAME])
             .output()
@@ -57,46 +62,54 @@ fn get_or_start_container() -> String {
             .unwrap_or(false);
 
         if running {
-            // Get existing URL
             if let Ok(url) = fs::read_to_string(url_file_path()) {
                 if !url.trim().is_empty() {
                     increment_ref_count();
                     return url.trim().to_string();
                 }
             }
-            // Container running but no URL file - get port
             let port = get_container_port().unwrap_or_default();
             if !port.is_empty() {
-                let url = format!("postgres://postgres:postgres@localhost:{}/postgres?sslmode=disable", port);
+                let url = format!(
+                    "postgres://postgres:postgres@localhost:{}/postgres?sslmode=disable",
+                    port
+                );
                 let _ = fs::write(url_file_path(), &url);
                 increment_ref_count();
                 return url;
             }
         }
 
-        // Need to start container
         let _ = std::process::Command::new("docker")
             .args(["rm", "-f", CONTAINER_NAME])
             .output();
 
         let output = std::process::Command::new("docker")
             .args([
-                "run", "-d",
-                "--name", CONTAINER_NAME,
-                "-e", "POSTGRES_USER=postgres",
-                "-e", "POSTGRES_PASSWORD=postgres",
-                "-e", "POSTGRES_DB=postgres",
-                "-p", "0:5432",
+                "run",
+                "-d",
+                "--name",
+                CONTAINER_NAME,
+                "-e",
+                "POSTGRES_USER=postgres",
+                "-e",
+                "POSTGRES_PASSWORD=postgres",
+                "-e",
+                "POSTGRES_DB=postgres",
+                "-p",
+                "0:5432",
                 "postgres:16-alpine",
             ])
             .output()
             .expect("Failed to start container");
 
         if !output.status.success() {
-            panic!("Failed to start postgres container: {}", String::from_utf8_lossy(&output.stderr));
+            panic!(
+                "Failed to start postgres container: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
 
-        // Wait for postgres to be ready
         for _ in 0..100 {
             let ready = std::process::Command::new("docker")
                 .args(["exec", CONTAINER_NAME, "pg_isready", "-U", "postgres"])
@@ -109,14 +122,14 @@ fn get_or_start_container() -> String {
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
 
-        // Extra wait after pg_isready - postgres may not be fully accepting connections yet
         std::thread::sleep(std::time::Duration::from_millis(200));
 
         let port = get_container_port().expect("Failed to get container port");
-        let url = format!("postgres://postgres:postgres@localhost:{}/postgres?sslmode=disable", port);
+        let url = format!(
+            "postgres://postgres:postgres@localhost:{}/postgres?sslmode=disable",
+            port
+        );
         let _ = fs::write(url_file_path(), &url);
-
-        // Reset ref count to 1 for new container
         let _ = fs::write(ref_count_path(), "1");
 
         url
@@ -177,7 +190,6 @@ fn cleanup() {
         let remaining = decrement_ref_count();
 
         if remaining == 0 {
-            // Last one out, clean up - must be inside lock to prevent race
             let _ = std::process::Command::new("docker")
                 .args(["rm", "-f", CONTAINER_NAME])
                 .output();
@@ -186,122 +198,6 @@ fn cleanup() {
         }
     });
 }
-
-const SCHEMA: &str = r#"
-CREATE TYPE alert_status AS ENUM ('active', 'acknowledged', 'resolved');
-
-CREATE TABLE projects (
-    id UUID PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    slug TEXT NOT NULL UNIQUE,
-    name TEXT NOT NULL,
-    description TEXT,
-    public BOOLEAN NOT NULL DEFAULT false,
-    github_repo TEXT,
-    github_token TEXT,
-    github_pr_comments BOOLEAN NOT NULL DEFAULT false,
-    github_status_checks BOOLEAN NOT NULL DEFAULT false,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
-);
-
-CREATE TABLE api_tokens (
-    id UUID PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    token_hash TEXT NOT NULL,
-    last_used_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL
-);
-
-CREATE TABLE branches (
-    id UUID PRIMARY KEY,
-    project_id UUID NOT NULL,
-    name TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
-);
-
-CREATE TABLE testbeds (
-    id UUID PRIMARY KEY,
-    project_id UUID NOT NULL,
-    name TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
-);
-
-CREATE TABLE measures (
-    id UUID PRIMARY KEY,
-    project_id UUID NOT NULL,
-    name TEXT NOT NULL,
-    units TEXT,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
-);
-
-CREATE TABLE benchmarks (
-    id UUID PRIMARY KEY,
-    project_id UUID NOT NULL,
-    name TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
-);
-
-CREATE TABLE reports (
-    id UUID PRIMARY KEY,
-    project_id UUID NOT NULL,
-    branch_id UUID NOT NULL,
-    testbed_id UUID NOT NULL,
-    git_hash TEXT,
-    pr_number INTEGER,
-    created_at TIMESTAMPTZ NOT NULL
-);
-
-CREATE TABLE metrics (
-    id UUID PRIMARY KEY,
-    report_id UUID NOT NULL,
-    benchmark_id UUID NOT NULL,
-    measure_id UUID NOT NULL,
-    value DOUBLE PRECISION NOT NULL,
-    lower DOUBLE PRECISION,
-    upper DOUBLE PRECISION,
-    created_at TIMESTAMPTZ NOT NULL
-);
-
-CREATE TABLE thresholds (
-    id UUID PRIMARY KEY,
-    project_id UUID NOT NULL,
-    measure_id UUID NOT NULL,
-    branch_id UUID,
-    testbed_id UUID,
-    upper_boundary DOUBLE PRECISION,
-    lower_boundary DOUBLE PRECISION,
-    min_sample_size INTEGER NOT NULL DEFAULT 2,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
-);
-
-CREATE TABLE alerts (
-    id UUID PRIMARY KEY,
-    threshold_id UUID NOT NULL,
-    metric_id UUID NOT NULL,
-    status alert_status NOT NULL DEFAULT 'active',
-    percent_change DOUBLE PRECISION NOT NULL,
-    baseline_value DOUBLE PRECISION NOT NULL,
-    current_value DOUBLE PRECISION NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
-);
-
-CREATE TABLE flamegraphs (
-    id UUID PRIMARY KEY,
-    report_id UUID NOT NULL,
-    benchmark_id UUID,
-    filename TEXT NOT NULL,
-    storage_path TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL
-);
-"#;
 
 fn get_postgres_url() -> String {
     std::env::var("TEST_DATABASE_URL").expect("TEST_DATABASE_URL not set - ctor should have set it")
@@ -317,8 +213,8 @@ type AppSchema = async_graphql::Schema<
 struct TestAppState {
     schema: AppSchema,
     db: DatabaseConnection,
+    auth: Arc<TsaAuth>,
     cache: AppCache,
-    auth_secret: String,
 }
 
 async fn graphql_handler(
@@ -332,7 +228,7 @@ async fn graphql_handler(
         .and_then(|v| v.strip_prefix("Bearer "));
 
     let user = match auth_header {
-        Some(token) => match validate_token(token, &state.auth_secret) {
+        Some(token) => match validate_token(token, &state.auth).await {
             Ok(user) => Some(user),
             Err(_) => None,
         },
@@ -342,29 +238,42 @@ async fn graphql_handler(
     let mut request = req.into_inner();
     request = request.data(state.db.clone());
     request = request.data(state.cache.clone());
+    request = request.data(state.auth.clone());
 
     request = request.data(DataLoader::new(
-        BranchLoader { db: state.db.clone() },
+        BranchLoader {
+            db: state.db.clone(),
+        },
         tokio::spawn,
     ));
     request = request.data(DataLoader::new(
-        TestbedLoader { db: state.db.clone() },
+        TestbedLoader {
+            db: state.db.clone(),
+        },
         tokio::spawn,
     ));
     request = request.data(DataLoader::new(
-        BenchmarkLoader { db: state.db.clone() },
+        BenchmarkLoader {
+            db: state.db.clone(),
+        },
         tokio::spawn,
     ));
     request = request.data(DataLoader::new(
-        MeasureLoader { db: state.db.clone() },
+        MeasureLoader {
+            db: state.db.clone(),
+        },
         tokio::spawn,
     ));
     request = request.data(DataLoader::new(
-        MetricLoader { db: state.db.clone() },
+        MetricLoader {
+            db: state.db.clone(),
+        },
         tokio::spawn,
     ));
     request = request.data(DataLoader::new(
-        ThresholdLoader { db: state.db.clone() },
+        ThresholdLoader {
+            db: state.db.clone(),
+        },
         tokio::spawn,
     ));
 
@@ -378,7 +287,7 @@ async fn graphql_handler(
 pub struct TestServer {
     pub base_url: String,
     pub client: reqwest::Client,
-    pub auth_secret: String,
+    auth: Arc<TsaAuth>,
     shutdown_tx: Option<oneshot::Sender<()>>,
     db_name: String,
     admin_url: String,
@@ -389,7 +298,9 @@ impl TestServer {
         let admin_url = get_postgres_url();
         let db_name = format!("test_{}", Uuid::new_v4().to_string().replace('-', "_"));
 
-        let admin_db = Database::connect(&admin_url).await.expect("Connect to admin db");
+        let admin_db = Database::connect(&admin_url)
+            .await
+            .expect("Connect to admin db");
         admin_db
             .execute_unprepared(&format!("CREATE DATABASE \"{}\"", db_name))
             .await
@@ -401,12 +312,19 @@ impl TestServer {
         } else {
             format!("{}/{}", admin_url, db_name)
         };
-        let db = Database::connect(&test_url).await.expect("Connect to test db");
+        let db = Database::connect(&test_url)
+            .await
+            .expect("Connect to test db");
 
-        db.execute_unprepared(SCHEMA).await.expect("Create schema");
+        migrations::run_migrations(&db)
+            .await
+            .expect("Run migrations");
+
+        let adapter = SeaOrmAdapter::new(db.clone());
+        let auth_config = AuthConfig::new().app_name("Driftwatch Test");
+        let auth = Arc::new(Auth::new(adapter, auth_config, NoopCallbacks));
 
         let port = portpicker::pick_unused_port().expect("No available port");
-        let auth_secret = "test-secret-key-for-jwt-signing".to_string();
 
         let schema = build_schema();
         let cache = AppCache::new();
@@ -414,8 +332,8 @@ impl TestServer {
         let state = TestAppState {
             schema,
             db,
+            auth: auth.clone(),
             cache,
-            auth_secret: auth_secret.clone(),
         };
 
         let cors = CorsLayer::new()
@@ -430,7 +348,9 @@ impl TestServer {
             .with_state(state);
 
         let addr = format!("127.0.0.1:{}", port);
-        let listener = tokio::net::TcpListener::bind(&addr).await.expect("Bind to port");
+        let listener = tokio::net::TcpListener::bind(&addr)
+            .await
+            .expect("Bind to port");
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
@@ -448,37 +368,50 @@ impl TestServer {
         Self {
             base_url: format!("http://127.0.0.1:{}", port),
             client: reqwest::Client::new(),
-            auth_secret,
+            auth,
             shutdown_tx: Some(shutdown_tx),
             db_name,
             admin_url,
         }
     }
 
+    pub async fn create_test_user(&self, email: &str) -> String {
+        let password = "test_password_123!";
+        let (_, _, token) = self
+            .auth
+            .signup(email, password, Some(email.to_string()))
+            .await
+            .expect("Create test user");
+        token
+    }
+
     pub fn create_test_token(&self, user_id: &str) -> String {
-        use jsonwebtoken::{encode, EncodingKey, Header};
-        use serde::{Deserialize, Serialize};
+        let rt = tokio::runtime::Handle::current();
+        let auth = self.auth.clone();
+        let email = format!("{}@test.local", user_id);
 
-        #[derive(Serialize, Deserialize)]
-        struct Claims {
-            sub: String,
-            exp: usize,
-            iat: usize,
-        }
-
-        let now = chrono::Utc::now();
-        let claims = Claims {
-            sub: user_id.to_string(),
-            exp: (now + chrono::Duration::hours(1)).timestamp() as usize,
-            iat: now.timestamp() as usize,
-        };
-
-        encode(
-            &Header::default(),
-            &claims,
-            &EncodingKey::from_secret(self.auth_secret.as_bytes()),
-        )
-        .expect("Create JWT")
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                rt.block_on(async {
+                    let password = "test_password_123!";
+                    match auth
+                        .signup(&email, password, Some(user_id.to_string()))
+                        .await
+                    {
+                        Ok((_, _, token)) => token,
+                        Err(_) => {
+                            let (_, _, token) = auth
+                                .signin(&email, password, None, None)
+                                .await
+                                .expect("Signin existing user");
+                            token
+                        }
+                    }
+                })
+            })
+            .join()
+            .expect("Thread panicked")
+        })
     }
 
     pub async fn graphql<T: for<'de> Deserialize<'de>>(
@@ -487,13 +420,13 @@ impl TestServer {
         variables: Option<serde_json::Value>,
         token: Option<&str>,
     ) -> GraphQLResult<T> {
-        let mut req = self
-            .client
-            .post(format!("{}/graphql", self.base_url))
-            .json(&serde_json::json!({
-                "query": query,
-                "variables": variables.unwrap_or(serde_json::Value::Null)
-            }));
+        let mut req =
+            self.client
+                .post(format!("{}/graphql", self.base_url))
+                .json(&serde_json::json!({
+                    "query": query,
+                    "variables": variables.unwrap_or(serde_json::Value::Null)
+                }));
 
         if let Some(token) = token {
             req = req.header("Authorization", format!("Bearer {}", token));
